@@ -1,1 +1,0 @@
-/home/ruben/ros/amp_rob_ws/src/uma_arm_control/launch/uma_arm_dynamics_launch.py

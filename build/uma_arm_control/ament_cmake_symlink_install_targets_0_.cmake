@@ -1,1 +1,0 @@
-ament_cmake_symlink_install_targets("TARGET_FILES" "/home/ruben/ros/amp_rob_ws/src/uma_arm_control/build/uma_arm_control/uma_arm_dynamics" "TARGETS" "uma_arm_dynamics" "DESTINATION" "lib/uma_arm_control")
