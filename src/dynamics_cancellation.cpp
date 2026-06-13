@@ -33,7 +33,8 @@ public:
             joint_positions_(Eigen::VectorXd::Zero(2)),
             joint_velocities_(Eigen::VectorXd::Zero(2)),
             desired_joint_accelerations_(Eigen::VectorXd::Zero(2)),
-            joint_torques_(Eigen::VectorXd::Zero(2))
+            joint_torques_(Eigen::VectorXd::Zero(2)),
+            external_wrenches_(Eigen::VectorXd::Zero(2))
     {
         // Frequency initialization
         this->declare_parameter<double>("frequency", 1000.0);
@@ -73,6 +74,13 @@ public:
 
         // Create publishers for joint torque
         publisher_joint_torques_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("joint_torques", 1);
+
+        // Create subscription to external_wrenches
+        subscription_external_wrenches_ = this->create_subscription<geometry_msgs::msg::Wrench>(
+            "external_wrenches", 1, [this](const geometry_msgs::msg::Wrench::SharedPtr msg) {
+                external_wrenches_(0) = msg->force.x;
+                external_wrenches_(1) = msg->force.y;
+            });
 
         // Set the timer callback at a period (in milliseconds, multiply it by 1000)
         timer_ = this->create_wall_timer(
@@ -147,9 +155,13 @@ private:
         g_vec << (m1_ + m2_) * l1_ * g_ * cos(q1) + m2_ * g_ * l2_ * cos(q1 + q2),
                  m2_ * g_ * l2_ * cos(q1 + q2);
 
-        // Calculate control torque using the dynamic model: torque = M * q_ddot + C * q_dot + Fb * q_dot + g
+        Eigen::MatrixXd J(2, 2);
+        J << -l1_ * sin(q1) - l2_ * sin(q1 + q2), -l2_ * sin(q1 + q2),
+              l1_ * cos(q1) + l2_ * cos(q1 + q2),  l2_ * cos(q1 + q2);
+
+        // Calculate control torque using the dynamic model: torque = M * q_ddot + C * q_dot + Fb * q_dot + g - J^T * F_ext
         Eigen::VectorXd torque(2);
-        torque = M * desired_joint_accelerations_ + C + Fb * joint_velocities_ + g_vec;
+        torque = M * desired_joint_accelerations_ + C + Fb * joint_velocities_ + g_vec - J.transpose() * external_wrenches_;
 
         return torque;
     }
@@ -167,6 +179,7 @@ private:
     // Publishers and subscribers
     rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr subscription_joint_states_;
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr subscription_desired_joint_accelerations_;
+    rclcpp::Subscription<geometry_msgs::msg::Wrench>::SharedPtr subscription_external_wrenches_;
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr publisher_joint_torques_;
     rclcpp::TimerBase::SharedPtr timer_;
 
@@ -175,6 +188,7 @@ private:
     Eigen::VectorXd joint_velocities_;
     Eigen::VectorXd desired_joint_accelerations_;
     Eigen::VectorXd joint_torques_;
+    Eigen::VectorXd external_wrenches_;
 
     // dynamic parameters variables
     double m1_;
