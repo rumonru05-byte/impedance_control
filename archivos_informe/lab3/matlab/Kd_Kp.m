@@ -13,47 +13,40 @@ G2 = Kp2 / (s^2 + Kd2*s + Kp2);
 Kp3 = 100; Kd3 = 40; 
 G3 = Kp3 / (s^2 + Kd3*s + Kp3);
 
-%% Graficar la comparativa con estilo Modo Oscuro
-% Color gris oscuro exacto
-colorFondo = [0.11 0.11 0.11]; 
-
-% Creamos la figura forzando el color de fondo
-figure('Name', 'Comparativa de Ajuste PD', 'Color', colorFondo);
+%% Graficar la comparativa
+figure('Name', 'Comparativa de Ajuste PD');
 hold on;
-step(G1, 1.5);
-step(G2, 1.5);
-step(G3, 1.5);
 
-% Configuración de los ejes para modo oscuro
-ax = gca;
-ax.Color = colorFondo;       
-ax.XColor = 'w';             
-ax.YColor = 'w';
-ax.GridColor = 'w';          
-ax.GridAlpha = 0.3;          
-ax.MinorGridColor = 'w';
-ax.MinorGridAlpha = 0.15;
-grid on; grid minor;
+% Simulamos la respuesta al escalón (hasta 1.5s)
+[y1, t1] = step(G1, 1.5);
+[y2, t2] = step(G2, 1.5);
+[y3, t3] = step(G3, 1.5);
 
-% Textos en blanco
-title('Respuesta Temporal del Error Articular (Sistema Linealizado)', 'Color', 'w');
-xlabel('Tiempo [s]', 'Color', 'w');
-ylabel('Posicion Articular [rad]', 'Color', 'w');
+% Ploteamos usando el mismo grosor que en tus gráficas de la Práctica 2
+plot(t1, y1, 'LineWidth', 1.5);
+plot(t2, y2, 'LineWidth', 1.5);
+plot(t3, y3, 'LineWidth', 1.5);
 
-% --- 1. LÍNEAS MÁS GORDAS ---
-grosorLinea = 2.5; % Cambia este número si las quieres aún más anchas
-set(findall(gcf,'type','line'), 'LineWidth', grosorLinea);
+% Usamos el intérprete LaTeX para mantener el estilo de tu código anterior
+title('Respuesta Temporal del Error Articular', 'interpreter', 'latex', 'fontSize', 14);
+xlabel('time [s]', 'interpreter', 'latex', 'fontSize', 14);
+ylabel('angular position $[rad]$', 'interpreter', 'latex', 'fontSize', 14);
 
-% --- 2. LEYENDA VISIBLE Y ADAPTADA ---
-lgd = legend(sprintf('Subamortiguado (Kp=%d, Kd=%d)', Kp1, Kd1), ...
-       sprintf('Críticamente Amortiguado (Kp=%d, Kd=%d)', Kp2, Kd2), ...
-       sprintf('Sobreamortiguado (Kp=%d, Kd=%d)', Kp3, Kd3), ...
-       'Location', 'best'); % 'best' busca el hueco donde no tape las líneas
-lgd.TextColor = 'w';
-lgd.Color = colorFondo;
-lgd.EdgeColor = 'w';
-lgd.FontSize = 11;
+% Configuramos la cuadrícula igual que en la Práctica 2
+grid on;
+grid minor;
+xlim([0 1.5]);
 
-%% Guardado en SVG respetando el fondo oscuro
-ruta_destino = 'ajuste_pd_control.svg'; 
-exportgraphics(gcf, ruta_destino, 'ContentType', 'vector', 'BackgroundColor', 'current');
+% Leyenda con LaTeX
+legend(sprintf('Subamortiguado ($K_p=%d$, $K_d=%d$)', Kp1, Kd1), ...
+       sprintf('Críticamente Amortiguado ($K_p=%d$, $K_d=%d$)', Kp2, Kd2), ...
+       sprintf('Sobreamortiguado ($K_p=%d$, $K_d=%d$)', Kp3, Kd3), ...
+       'interpreter', 'latex', 'fontSize', 12, 'Location', 'southeast');
+
+%% Guardado SVG transparente (Mismo formato que la Práctica 2)
+% Cambia esta ruta si lo necesitas
+ruta_destino = '\\wsl.localhost\Ubuntu-22.04\home\ruben\ros\amp_rob_ws\src\uma_arm_control\archivos_informe\lab3\img\ajuste_pd.svg';
+
+% El truco para que quede como la Práctica 2 es NO poner 'BackgroundColor'
+% y dejar que MATLAB lo exporte por defecto (o forzar 'none' si la web es negra)
+exportgraphics(gcf, ruta_destino, 'ContentType', 'vector');
