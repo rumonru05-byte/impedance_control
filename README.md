@@ -1,6 +1,6 @@
-# Lab 2: Manipulator Dynamics Simulation
+# Lab 3: Inverse Dynamics Control
 
-Este repositorio contiene la implementación en ROS 2 (C++) del modelo dinámico para un manipulador RR. El nodo principal resuelve las ecuaciones de movimiento de Euler-Lagrange, calculando en tiempo real las aceleraciones, velocidades y posiciones articulares del robot en respuesta a pares aplicados y fuerzas externas, sujeto a la gravedad.
+Este repositorio contiene la implementación en ROS 2 (C++) de estrategias de control centralizado para un brazo manipulador en el espacio articular. Se exploran tres esquemas fundamentales: compensación de gravedad, cancelación de dinámica (linealización exacta) y control Proporcional-Derivativo (PD) estabilizador.
 
 ---
 
@@ -8,54 +8,139 @@ Este repositorio contiene la implementación en ROS 2 (C++) del modelo dinámico
 Clona este repositorio dentro de la carpeta `src` de tu espacio de trabajo de ROS 2 y compila el paquete:
 ```bash
 cd ~/ros/amp_rob_ws/src
-git clone https://github.com/rumonru05-byte/manipulator_dynamics_simulation.git
+git clone https://github.com/rumonru05-byte/inverse_dynamics_control.git
 cd ~/ros/amp_rob_ws
 colcon build --packages-select uma_arm_control
 source install/setup.bash
 ```
-Para lanzar el simulador y visualizar el brazo manipulador sujeto a la gravedad:
-* En una terminal, el visualizador `RViz`:
+
+### Preparación Común
+Para cualquiera de los siguientes controladores, es necesario lanzar primero el entorno de simulación y la física del robot. Abre dos terminales y ejecuta:
+
+1. **Visualización en RViz:**
 ```bash
 ros2 launch uma_arm_description uma_arm_visualization.launch.py
 ```
-* En otra terminal, el nodo:
+2. **Dinámica del manipulador (Planta real):**
 ```bash
-ros2 launch uma_arm_control uma_arm_dynamics.launch.py
+ros2 launch uma_arm_control uma_arm_dynamics_launch.py
 ```
 
-Los parámetros dinámicos (masas, longitudes, fricciones y gravedad) son totalmente configurables a través del archivo `config/dynamics_params.yaml`.
+---
+
+### 1. Compensación de Gravedad
+Si quieres ver la compensación de gravedad en acción:
+1. Lanza el nodo controlador:
+```bash
+ros2 launch uma_arm_control gravity_compensation_launch.py
+```
+2. Lanza el publicador de fuerzas externas para comprobar cómo el brazo mantiene su posición frente a perturbaciones:
+```bash
+python3 wrench_trackbar_publisher.py
+```
+*(Nota: Asegúrate de ejecutar el script de fuerzas desde la ruta correcta o usar `ros2 run` si está configurado en tu paquete).*
+
+### 2. Cancelación de Dinámica
+Si quieres ver la cancelación de la dinámica (linealización exacta):
+1. Lanza el nodo controlador (el brazo quedará sin fricción ni gravedad):
+```bash
+ros2 launch uma_arm_control dynamics_cancellation_launch.py
+```
+2. Lanza el script de la trayectoria circular para comprobar el seguimiento:
+```bash
+python3 cubic_trajectory.py
+```
+
+### 3. Controlador PD Estabilizador
+Si quieres ver el funcionamiento del controlador PD de lazo cerrado:
+1. Lanza el nodo de cancelación de dinámica (bucle interno):
+```bash
+ros2 launch uma_arm_control dynamics_cancellation_launch.py
+```
+2. Lanza el controlador PD (bucle externo):
+```bash
+ros2 launch uma_arm_control pd_controller_launch.py
+```
+3. Lanza el publicador de fuerzas externas para comprobar la robustez y estabilización del sistema ante empujones:
+```bash
+python3 wrench_trackbar_publisher.py
+```
+
+**Modificación del punto de equilibrio:**
+Si deseas cambiar la coordenada articular hacia la que el controlador PD estabiliza el robot, debes modificar el parámetro `qd` en el constructor del archivo `pd_controller.cpp`:
+```cpp
+// Cambia {0.785, 0.785} por las coordenadas deseadas en radianes
+this->declare_parameter<std::vector<double>>("qd", {0.785, 0.785}); 
+```
 
 ---
 
 ## Descripción de la Implementación
-El funcionamiento del nodo principal consiste en calcular iterativamente el estado articular resolviendo la ecuación fundamental de la dinámica (Euler-Lagrange):
 
-$$M(q)\ddot{q} + C(q,\dot{q})\dot{q} + F_b\dot{q} + g(q) = \tau + J^T(q)F_{ext}$$
+El proyecto se estructura en tres nodos secuenciales que asumen el control de los pares articulares ($\tau$):
 
-Para ello, se ha implementado un bucle de control con una frecuencia parametrizable (por defecto $1000 Hz$) que actualiza la cinemática del robot en cada paso de tiempo temporal (`elapsed_time_` o $\Delta t$). Este proceso se divide en tres funciones secuenciales:
+1. **`gravity_compensation.cpp`:** Implementa un controlador estático que calcula e inyecta únicamente el par necesario para vencer el peso de los eslabones, manteniendo el robot en equilibrio sin frenos mecánicos:
 
-1. **Cálculo de Aceleración (`calculate_acceleration`):** En esta función se construyen y evalúan las matrices del modelo dinámico ($M$, $C$, $F_b$, $J$) y los vectores de fuerzas a partir de la posición y velocidad actuales. Finalmente, se despeja la aceleración articular ($\ddot{q}$) aislando el término e invirtiendo la matriz de inercia:
+$$\tau = g(q)$$
 
-$$\ddot{q} = M(q)^{-1} \left[ \tau - C(q,\dot{q})\dot{q} - F_b\dot{q} - g(q) + J^T(q)F_{ext} \right]$$
+2. **`dynamics_cancellation.cpp`:** Implementa la linealización exacta por realimentación. Lee las aceleraciones deseadas ($\ddot{q}_d$) y el estado actual ($q, \dot{q}$) para anular matemáticamente las inercias, fuerzas centrífugas/Coriolis y la fricción viscosa del sistema real:
 
-2. **Cálculo de Velocidad (`calculate_velocity`):** Se aplica un método de integración numérica de primer orden (Euler hacia adelante). La nueva velocidad articular se obtiene sumando a la velocidad del ciclo anterior el producto de la aceleración recién calculada por el incremento de tiempo:
+$$\tau = M(q)\ddot{q}_d + C(q,\dot{q})\dot{q} + F_b\dot{q} + g(q)$$
 
-$$\dot{q}_{t} = \dot{q}_{t-1} + \ddot{q} \cdot \Delta t$$
+3. **`pd_controller.cpp`:** Cierra el lazo de control sobre el sistema ya linealizado. Al asumir que $\dot{q}_d = 0$ y $\ddot{q}_d = 0$ (regulación a un punto fijo), calcula la nueva ley de control de aceleración $y$ usando matrices de ganancias Proporcional ($K_P$) y Derivativa ($K_D$). Esta aceleración $y$ se publica en el tópico `desired_joint_accelerations` para alimentar al nodo de cancelación de dinámica:
 
-3. **Cálculo de Posición (`calculate_position`):** Siguiendo el mismo esquema de integración numérica, se actualiza la posición articular sumando el desplazamiento incremental generado por la velocidad actual:
-
-$$q_{t} = q_{t-1} + \dot{q}_{t-1} \cdot \Delta t$$
+$$y = K_P(q_d - q) - K_D\dot{q}$$
 
 ---
 
-## Resultados y gráficas
-A continuación se muestra el comportamiento libre del manipulador cayendo por acción de la gravedad, visualizado en `RViz`.
+## Resultados y Gráficas
 
-![Vídeo Parámetros Default](archivos_informe/lab2/video/video1.gif)
+A continuación se analizan los resultados experimentales de cada esquema de control propuesto.
 
-Las dinámicas resultantes de esta respuesta natural del sistema han sido registradas utilizando ROS bags y analizadas estadísticamente. El perfil de estado articular (Posición, Velocidad y Aceleración) se muestra a continuación:
+### Compensación de Gravedad
+La compensación de gravedad permite al brazo contrarrestar su propio peso. Al aplicar fuerzas externas virtuales, el manipulador se desplaza, pero en el momento en que cesa la fuerza, se establece en un nuevo punto de equilibrio estático en lugar de caer libremente.
 
-![Gráficas Parámetros Default](archivos_informe/lab2/img/graficas_dinamica.svg)
+<table>
+  <tr>
+    <td align="center">
+      <strong>Funcionamiento de la Compensación de Gravedad</strong><br>
+      <img src="archivos_informe/lab3/video/exp1.gif" width="100%" alt="Compensación de gravedad">
+    </td>
+    <td align="center">
+      <strong>Evolución de Estados</strong><br>
+      <img src="archivos_informe/lab3/img/plot1.png" width="100%">
+    </td>
+  </tr>
+</table>
 
-### Análisis de la simulación
-En las gráficas superiores se observa la respuesta del sistema al liberarse desde una configuración inicial $q_0 = [\pi/4, -\pi/4]$. Debido a que no se inyectan pares motrices activos ($\tau = 0$), el movimiento está regido exclusivamente por la aceleración gravitatoria y amortiguado por la fricción viscosa de las articulaciones. Las ondas de velocidad y posición reflejan la transferencia continua entre energía potencial y cinética hasta que el brazo alcanza su posición de reposo colgante (equilibrio estable).
+### Cancelación de Dinámica (Trayectoria)
+El esquema de cancelación convierte al robot en un doble integrador ideal. En este modo, al enviarle comandos de aceleración (trayectoria cúbica), el brazo es capaz de trazar geometrías complejas, como una curva en el espacio cartesiano.
+
+<table>
+  <tr>
+    <td align="center">
+      <strong>Seguimiento de Trayectoria Circular</strong><br>
+      <img src="archivos_informe/lab3/video/exp_circular2.gif" width="100%" alt="Trayectoria circular">
+    </td>
+    <td align="center">
+      <strong>Posición y Velocidad Articular</strong><br>
+      <img src="archivos_informe/lab3/img/plot_circ.png" width="100%">
+    </td>
+  </tr>
+</table>
+
+### Controlador PD Estabilizador
+Al someter la planta linealizada a perturbaciones sin un lazo cerrado, el sistema se vuelve inestable. La integración del controlador PD permite que el robot se comporte como un sistema de segundo orden críticamente amortiguado ($\zeta = 1$). Al aplicar fuerzas, el brazo absorbe la perturbación y regresa asintóticamente a su coordenada original ($[0.785, 0.785]$) sin sobreimpulso ni oscilaciones persistentes.
+
+<table>
+  <tr>
+    <td align="center">
+      <strong>Estabilización PD ante Fuerzas Externas</strong><br>
+      <img src="archivos_informe/lab3/video/exp_pd.gif" width="100%" alt="Control PD">
+    </td>
+    <td align="center">
+      <strong>Rechazo de Perturbaciones (Gráfica)</strong><br>
+      <img src="archivos_informe/lab3/img/plot_pd.png" width="100%">
+    </td>
+  </tr>
+</table>
