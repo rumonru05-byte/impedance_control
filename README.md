@@ -98,7 +98,7 @@ Al inyectar fuerzas virtuales a través del publicador, el robot reacciona cedie
 
 Como se puede observar en las gráficas resultantes, la respuesta del controlador base presenta un **acoplamiento dinámico**: al aplicar una perturbación estrictamente ortogonal en un eje (por ejemplo, empujar solo en X), las inercias cruzadas del brazo físico provocan un desplazamiento no deseado en el eje Y. 
 
-> **Nota:** El análisis matemático de este fenómeno (cross-coupling) y la implementación de su solución (desacoplamiento total mediante la cancelación de fuerzas en el lazo interno) se documentan y resuelven en la **Wiki** de este repositorio.
+> **_Nota:_** El análisis matemático de este fenómeno (cross-coupling) y la implementación de su solución (desacoplamiento total mediante la cancelación de fuerzas en el lazo interno) se documentan y resuelven en la **[Wiki de este repositorio](https://github.com/rumonru05-byte/impedance_control/wiki)**.
 
 <table>
   <tr>
