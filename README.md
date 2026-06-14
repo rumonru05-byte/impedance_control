@@ -1,4 +1,4 @@
-# Lab 4: Cartesian Impedance Control
+# Lab 4: Impedance Control
 
 Este repositorio contiene la implementación en ROS 2 (C++) de un Controlador de Impedancia Cartesiana para un manipulador RR. El sistema adopta una arquitectura de control de dos niveles: un lazo interno para la compensación y cancelación de la dinámica no lineal del brazo, y un lazo externo que impone un comportamiento mecánico virtual (masa-muelle-amortiguador) en el espacio operacional frente a fuerzas externas.
 
